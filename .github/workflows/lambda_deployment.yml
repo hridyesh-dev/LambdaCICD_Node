@@ -15,7 +15,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: '22'
 
       - name: Install dependencies
         run: npm install
@@ -23,10 +23,9 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Install zip and create package
+      - name: Zip Lambda function
         run: |
-          sudo apt-get update && sudo apt-get install -y zip
-          zip -r code.zip .
+          zip -r code.zip . -x "*.git*" "node_modules/*" "*.github*"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -35,21 +34,36 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      - name: Update Lambda function
+      - name: Update Lambda function code
         run: |
           aws lambda update-function-code \
-            --function-name TestFunction \
+            --function-name TestFunctionNode \
             --zip-file fileb://code.zip
+
+      - name: Wait for Lambda update to complete
+        run: |
+          aws lambda wait function-updated --function-name TestFunctionNode
 
       - name: Publish new version
         id: publish
         run: |
-          VERSION=$(aws lambda publish-version --function-name TestFunction --query 'Version' --output text)
+          VERSION=$(aws lambda publish-version --function-name TestFunctionNode --query 'Version' --output text)
           echo "version=$VERSION" >> $GITHUB_ENV
+
+      - name: Create prod alias if not exists
+        run: |
+          aws lambda get-alias --function-name TestFunctionNode --name prod || \
+          aws lambda create-alias \
+            --function-name TestFunctionNode \
+            --name prod \
+            --function-version ${{ env.version }}
 
       - name: Update alias to new version
         run: |
           aws lambda update-alias \
-            --function-name TestFunction \
+            --function-name TestFunctionNode \
             --name prod \
             --function-version ${{ env.version }}
+
+      - name: Clean up
+        run: rm code.zip
