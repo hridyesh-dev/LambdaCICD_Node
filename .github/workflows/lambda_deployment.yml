@@ -65,5 +65,17 @@ jobs:
             --name prod \
             --function-version ${{ env.version }}
 
+            
+      - name: Trigger EventBridge for Load Test
+        run: |
+          aws events put-events --entries '[
+            {
+              "Source": "lambda.deployment",
+              "DetailType": "DeploymentComplete",
+              "Detail": "{\"functionName\":\"TestFunctionNode\",\"version\":\"${{ env.version }}\"}"
+            }
+          ]'
+
+
       - name: Clean up
         run: rm code.zip
